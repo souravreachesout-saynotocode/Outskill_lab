@@ -46,7 +46,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const openaiResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
+      "https://api.openai.com/v1/responses",
       {
         method: "POST",
         headers: {
@@ -54,18 +54,24 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-3.5-turbo",
-          messages: [
+          prompt: {
+            id: "pmpt_690f56daeb588195b7e50674719dc4c1016225f711497be0",
+            version: "1"
+          },
+          input: [
             {
-              role: "system",
-              content: "You are a helpful assistant that breaks down tasks into 3-5 specific, actionable subtasks. Return only a JSON array of strings, nothing else.",
-            },
-            {
-              role: "user",
-              content: `Break down this task into 3-5 specific subtasks: "${taskTitle}". Return only a JSON array of strings.`,
-            },
+              task_title: taskTitle
+            }
           ],
-          temperature: 0.7,
+          text: {
+            format: {
+              type: "text"
+            }
+          },
+          reasoning: {},
+          max_output_tokens: 2048,
+          store: true,
+          include: ["web_search_call.action.sources"]
         }),
       }
     );
@@ -86,13 +92,14 @@ Deno.serve(async (req: Request) => {
     }
 
     const openaiData = await openaiResponse.json();
-    const subtasksText = openaiData.choices[0].message.content.trim();
-    
+    const responseText = openaiData.text || openaiData.output?.text || "";
+
     let subtasks: string[];
     try {
-      subtasks = JSON.parse(subtasksText);
+      subtasks = JSON.parse(responseText);
     } catch {
-      subtasks = subtasksText.split("\n").filter((line: string) => line.trim()).map((line: string) => line.replace(/^[0-9]+\.\s*/, "").trim());
+      const lines = responseText.split("\n").filter((line: string) => line.trim());
+      subtasks = lines.map((line: string) => line.replace(/^[0-9]+\.\s*/, "").replace(/^[-*]\s*/, "").trim()).filter((line: string) => line.length > 0);
     }
 
     return new Response(
