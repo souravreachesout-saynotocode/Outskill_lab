@@ -20,6 +20,14 @@ interface Subtask {
   created_at: string;
 }
 
+interface SearchResult {
+  id: string;
+  title: string;
+  priority: string;
+  status: string;
+  similarity: number;
+}
+
 function Dashboard() {
   const navigate = useNavigate();
   const { user, loading, signOut } = useAuth();
@@ -31,6 +39,9 @@ function Dashboard() {
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, string[]>>({});
   const [generatingSubtasks, setGeneratingSubtasks] = useState<Record<string, boolean>>({});
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -84,6 +95,8 @@ function Dashboard() {
       setTasks([data, ...tasks]);
       setNewTask('');
       setNewPriority('medium');
+
+      await generateEmbedding(data.id, data.title);
     } catch (error) {
       console.error('Error adding task:', error);
     }
@@ -242,6 +255,52 @@ function Dashboard() {
     }
   };
 
+  const generateEmbedding = async (taskId: string, taskTitle: string) => {
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-embedding`;
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ taskId, taskTitle }),
+      });
+    } catch (error) {
+      console.error('Error generating embedding:', error);
+    }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim() || !user) return;
+
+    setSearching(true);
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/semantic-search`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: searchQuery, userId: user.id }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+
+      const data = await response.json();
+      setSearchResults(data.results || []);
+    } catch (error) {
+      console.error('Error searching:', error);
+      alert('Search failed. Please try again.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const handleLogout = async () => {
     await signOut();
     navigate('/');
@@ -293,7 +352,71 @@ function Dashboard() {
         </h1>
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">
-          <div className="flex-1 w-full">{/* Tasks section */}
+          <div className="flex-1 w-full">
+
+        <div className="bg-blue-50 rounded-2xl shadow-lg p-6 mb-8">
+          <form onSubmit={handleSearch} className="space-y-4">
+            <div>
+              <label htmlFor="searchQuery" className="block text-gray-800 text-lg font-semibold mb-2">
+                Smart Search
+              </label>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  id="searchQuery"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1 px-4 py-3 border-2 border-blue-200 rounded-lg focus:outline-none focus:border-blue-500 transition-colors text-gray-700 bg-white"
+                  placeholder="Search for similar tasks..."
+                />
+                <button
+                  type="submit"
+                  disabled={searching}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {searching ? 'Searching...' : 'Search'}
+                </button>
+              </div>
+            </div>
+
+            {searchResults.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Similar Tasks Found:</h3>
+                <div className="space-y-2">
+                  {searchResults.map((result) => (
+                    <div
+                      key={result.id}
+                      className="bg-white rounded-lg p-4 border-2 border-blue-200 hover:border-blue-400 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-800 mb-1">{result.title}</h4>
+                          <div className="flex gap-2 flex-wrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(result.priority)}`}>
+                              {result.priority.charAt(0).toUpperCase() + result.priority.slice(1)}
+                            </span>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(result.status)}`}>
+                              {result.status === 'in-progress' ? 'In Progress' : result.status.charAt(0).toUpperCase() + result.status.slice(1)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="ml-3 text-sm font-semibold text-blue-600">
+                          {(result.similarity * 100).toFixed(0)}% match
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {searchQuery && searchResults.length === 0 && !searching && (
+              <div className="mt-4 text-sm text-gray-600 text-center py-2">
+                No similar tasks found with similarity above 70%
+              </div>
+            )}
+          </form>
+        </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8 mb-8">
           <form onSubmit={handleAddTask} className="space-y-4 mb-8 pb-8 border-b-2 border-gray-200">
