@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import Profile from '../components/Profile';
 
 interface Task {
   id: string;
@@ -286,10 +287,13 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-400 via-blue-300 to-cyan-200 py-12 px-4">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <h1 className="text-5xl md:text-6xl font-bold text-white mb-12 text-center drop-shadow-lg tracking-tight">
           Your Tasks
         </h1>
+
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
+          <div className="flex-1 w-full">{/* Tasks section */}
 
         <div className="bg-white rounded-2xl shadow-2xl p-8 mb-8">
           <form onSubmit={handleAddTask} className="space-y-4 mb-8 pb-8 border-b-2 border-gray-200">
@@ -449,6 +453,12 @@ function Dashboard() {
         >
           Logout
         </button>
+        </div>
+
+        <div className="lg:sticky lg:top-8">
+          <Profile />
+        </div>
+        </div>
       </div>
     </div>
   );
