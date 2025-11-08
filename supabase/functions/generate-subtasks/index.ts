@@ -46,7 +46,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const openaiResponse = await fetch(
-      "https://api.openai.com/v1/responses",
+      "https://api.openai.com/v1/chat/completions",
       {
         method: "POST",
         headers: {
@@ -54,24 +54,19 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: {
-            id: "pmpt_690f56daeb588195b7e50674719dc4c1016225f711497be0",
-            version: "1"
-          },
-          input: [
+          model: "gpt-4o-mini",
+          messages: [
             {
-              task_title: taskTitle
-            }
+              role: "system",
+              content: "You are a helpful assistant that breaks down tasks into 3-5 specific, actionable subtasks. Return your response as a numbered list, with each subtask on a new line.",
+            },
+            {
+              role: "user",
+              content: `Break down this task into 3-5 specific, actionable subtasks: \"${taskTitle}\"`,
+            },
           ],
-          text: {
-            format: {
-              type: "text"
-            }
-          },
-          reasoning: {},
-          max_output_tokens: 2048,
-          store: true,
-          include: ["web_search_call.action.sources"]
+          temperature: 0.7,
+          max_tokens: 500,
         }),
       }
     );
@@ -80,7 +75,7 @@ Deno.serve(async (req: Request) => {
       const error = await openaiResponse.text();
       console.error("OpenAI API error:", error);
       return new Response(
-        JSON.stringify({ error: "Failed to generate subtasks" }),
+        JSON.stringify({ error: "Failed to generate subtasks", details: error }),
         {
           status: 500,
           headers: {
@@ -92,15 +87,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const openaiData = await openaiResponse.json();
-    const responseText = openaiData.text || openaiData.output?.text || "";
+    const responseText = openaiData.choices[0].message.content.trim();
 
-    let subtasks: string[];
-    try {
-      subtasks = JSON.parse(responseText);
-    } catch {
-      const lines = responseText.split("\n").filter((line: string) => line.trim());
-      subtasks = lines.map((line: string) => line.replace(/^[0-9]+\.\s*/, "").replace(/^[-*]\s*/, "").trim()).filter((line: string) => line.length > 0);
-    }
+    const lines = responseText.split("\n").filter((line: string) => line.trim());
+    const subtasks = lines
+      .map((line: string) => line.replace(/^[0-9]+\.\s*/, "").replace(/^[-*]\s*/, "").trim())
+      .filter((line: string) => line.length > 0);
 
     return new Response(
       JSON.stringify({ subtasks }),
