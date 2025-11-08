@@ -11,14 +11,6 @@ interface Task {
   created_at: string;
 }
 
-interface Subtask {
-  id: string;
-  task_id: string;
-  title: string;
-  completed: boolean;
-  created_at: string;
-}
-
 function Dashboard() {
   const navigate = useNavigate();
   const { user, loading, signOut } = useAuth();
@@ -26,10 +18,6 @@ function Dashboard() {
   const [newTask, setNewTask] = useState('');
   const [newPriority, setNewPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [loadingTasks, setLoadingTasks] = useState(true);
-  const [subtasks, setSubtasks] = useState<Record<string, Subtask[]>>({});
-  const [aiSuggestions, setAiSuggestions] = useState<Record<string, string[]>>({});
-  const [generatingSubtasks, setGeneratingSubtasks] = useState<Record<string, boolean>>({});
-  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!loading && !user) {
@@ -40,7 +28,6 @@ function Dashboard() {
   useEffect(() => {
     if (user) {
       fetchTasks();
-      fetchAllSubtasks();
     }
   }, [user]);
 
@@ -117,127 +104,6 @@ function Dashboard() {
       setTasks(tasks.filter(task => task.id !== taskId));
     } catch (error) {
       console.error('Error deleting task:', error);
-    }
-  };
-
-  const fetchAllSubtasks = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('subtasks')
-        .select('*')
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-
-      const subtasksByTask: Record<string, Subtask[]> = {};
-      data?.forEach((subtask: Subtask) => {
-        if (!subtasksByTask[subtask.task_id]) {
-          subtasksByTask[subtask.task_id] = [];
-        }
-        subtasksByTask[subtask.task_id].push(subtask);
-      });
-
-      setSubtasks(subtasksByTask);
-    } catch (error) {
-      console.error('Error fetching subtasks:', error);
-    }
-  };
-
-  const handleGenerateSubtasks = async (taskId: string, taskTitle: string) => {
-    setGeneratingSubtasks({ ...generatingSubtasks, [taskId]: true });
-
-    try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-subtasks`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ taskTitle }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate subtasks');
-      }
-
-      const data = await response.json();
-      setAiSuggestions({ ...aiSuggestions, [taskId]: data.subtasks });
-      setExpandedTasks({ ...expandedTasks, [taskId]: true });
-    } catch (error) {
-      console.error('Error generating subtasks:', error);
-      alert('Failed to generate subtasks. Please try again.');
-    } finally {
-      setGeneratingSubtasks({ ...generatingSubtasks, [taskId]: false });
-    }
-  };
-
-  const handleSaveSubtask = async (taskId: string, subtaskTitle: string) => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('subtasks')
-        .insert([{
-          task_id: taskId,
-          user_id: user.id,
-          title: subtaskTitle,
-          completed: false,
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setSubtasks({
-        ...subtasks,
-        [taskId]: [...(subtasks[taskId] || []), data],
-      });
-
-      setAiSuggestions({
-        ...aiSuggestions,
-        [taskId]: aiSuggestions[taskId].filter(s => s !== subtaskTitle),
-      });
-    } catch (error) {
-      console.error('Error saving subtask:', error);
-    }
-  };
-
-  const handleToggleSubtask = async (taskId: string, subtaskId: string, completed: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('subtasks')
-        .update({ completed: !completed, updated_at: new Date().toISOString() })
-        .eq('id', subtaskId);
-
-      if (error) throw error;
-
-      setSubtasks({
-        ...subtasks,
-        [taskId]: subtasks[taskId].map(st =>
-          st.id === subtaskId ? { ...st, completed: !completed } : st
-        ),
-      });
-    } catch (error) {
-      console.error('Error toggling subtask:', error);
-    }
-  };
-
-  const handleDeleteSubtask = async (taskId: string, subtaskId: string) => {
-    try {
-      const { error } = await supabase
-        .from('subtasks')
-        .delete()
-        .eq('id', subtaskId);
-
-      if (error) throw error;
-
-      setSubtasks({
-        ...subtasks,
-        [taskId]: subtasks[taskId].filter(st => st.id !== subtaskId),
-      });
-    } catch (error) {
-      console.error('Error deleting subtask:', error);
     }
   };
 
@@ -360,7 +226,7 @@ function Dashboard() {
                     </span>
                   </div>
 
-                  <div className="flex gap-2 mb-3">
+                  <div className="flex gap-2">
                     <button
                       onClick={() => handleUpdateStatus(task.id, 'pending')}
                       disabled={task.status === 'pending'}
@@ -383,60 +249,6 @@ function Dashboard() {
                       Done
                     </button>
                   </div>
-
-                  <button
-                    onClick={() => handleGenerateSubtasks(task.id, task.title)}
-                    disabled={generatingSubtasks[task.id]}
-                    className="w-full px-4 py-2 bg-sky-100 text-sky-700 rounded-lg font-semibold hover:bg-sky-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3"
-                  >
-                    {generatingSubtasks[task.id] ? 'Generating...' : 'Generate Subtasks with AI'}
-                  </button>
-
-                  {aiSuggestions[task.id] && aiSuggestions[task.id].length > 0 && (
-                    <div className="mb-3 p-3 bg-gray-50 rounded-lg">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">AI Suggestions:</h4>
-                      <ul className="space-y-2">
-                        {aiSuggestions[task.id].map((suggestion, index) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <span className="flex-1 text-sm text-gray-700">{suggestion}</span>
-                            <button
-                              onClick={() => handleSaveSubtask(task.id, suggestion)}
-                              className="px-2 py-1 text-xs bg-sky-600 text-white rounded hover:bg-sky-700 transition-colors"
-                            >
-                              Save
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {subtasks[task.id] && subtasks[task.id].length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Subtasks:</h4>
-                      <ul className="space-y-2">
-                        {subtasks[task.id].map((subtask) => (
-                          <li key={subtask.id} className="flex items-start gap-2">
-                            <input
-                              type="checkbox"
-                              checked={subtask.completed}
-                              onChange={() => handleToggleSubtask(task.id, subtask.id, subtask.completed)}
-                              className="mt-1 cursor-pointer"
-                            />
-                            <span className={`flex-1 text-sm ${subtask.completed ? 'line-through text-gray-500' : 'text-gray-700'}`}>
-                              {subtask.title}
-                            </span>
-                            <button
-                              onClick={() => handleDeleteSubtask(task.id, subtask.id)}
-                              className="text-red-500 hover:text-red-700 text-xs px-1"
-                            >
-                              ✕
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
